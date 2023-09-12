@@ -64,7 +64,7 @@ def get_tracking_number(email_content):
     soup = BeautifulSoup(email_content, 'html.parser')
     
     # Find the <p> element containing the tracking number
-    tracking_p = soup.find('p', text=lambda text: text and re.search(r'(United Parcel Service|United States Postal Service) Tracking #', text))
+    tracking_p = soup.find('p', text=lambda text: text and re.search(r'(United Parcel Service|United States Postal Service) Tracking #', text)) # depreciated
     
     if tracking_p:
         # Extract the tracking number using a regular expression
@@ -83,7 +83,7 @@ def get_item_name(email_content):
 
 def get_item_quantity(email_content):
     soup = BeautifulSoup(email_content, 'html.parser')
-    item_quantity_element = soup.find('td', class_='product-details', text=lambda text: text and 'Qty:' in text)
+    item_quantity_element = soup.find('td', class_='product-details', text=lambda text: text and 'Qty:' in text) # depreciated
     
     if item_quantity_element:
         # Extract the quantity from the element's text
@@ -112,7 +112,7 @@ def itemnametoupc(item_name, UPC_list_file_path):
         print(f"File not found: {UPC_list_file_path}")
         return None
     
-def process_and_write_to_csv_or_txt(csv_writer, email_message, email_subject, email_id):
+def process_and_write_to_csv_or_txt(output_csv_writer, submission_csv_writer, email_message, email_subject, email_id):
     order_number = None
     order_date = None
     delivery_address = None
@@ -146,11 +146,12 @@ def process_and_write_to_csv_or_txt(csv_writer, email_message, email_subject, em
                     #print(f'Item UPC found: {item_upc}')
                     
                     if tracking_number is not None:
-                        csv_writer.writerow([tracking_number, item_upc, item_quantity, order_number, delivery_address])
+                        output_csv_writer.writerow([tracking_number, item_upc, item_quantity, order_number, delivery_address])
+                        submission_csv_writer.writerow([tracking_number, item_upc, item_quantity])
                         print(f'Order number {order_number} shipping details logged to CSV')
                     else:
                         print(f'No tracking number found for order: {order_number}')
-                        csv_writer.writerow(['unshipped', item_upc, item_quantity, order_number, delivery_address])
+                        output_csv_writer.writerow(['unshipped', item_upc, item_quantity, order_number, delivery_address])
                 
                 except Exception as e:
                     print(f'Failed to process email: {str(e)}')
@@ -162,7 +163,7 @@ def process_and_write_to_csv_or_txt(csv_writer, email_message, email_subject, em
         return
     #return unshipped_order_email_ids
 
-def search_emails_from_specific_senders(email_address, app_password, senders, output_csv):
+def search_emails_from_specific_senders(email_address, app_password, senders):
     try:
         imap_server = imaplib.IMAP4_SSL('imap.gmail.com')
         imap_server.login(email_address, app_password)
@@ -188,21 +189,25 @@ def search_emails_from_specific_senders(email_address, app_password, senders, ou
         # make timestamp
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
-        output_csv_with_timestamp = f"target_tracking_{timestamp}.csv"
+        output_csv_with_timestamp = f"target_order_log_{timestamp}.csv"
+        submission_csv_with_timestamp = f"target_tracking_{timestamp}_submission.csv"
 
-        with open(output_csv_with_timestamp, mode='w', newline='') as csv_file:
-            csv_writer = csv.writer(csv_file)
-            # CSV headers
-            csv_writer.writerow(['Tracking Number', 'UPC', 'Item QTY', 'Order Number', 'Delivery Address'])
-
+        with open(output_csv_with_timestamp, mode='w', newline='') as csv_output_file, \
+        open(submission_csv_with_timestamp, mode='w', newline='') as csv_submission_file:
+            output_csv_writer = csv.writer(csv_output_file)
+            submission_csv_writer = csv.writer(csv_submission_file)
+        # CSV headers
+            output_csv_writer.writerow(['Tracking Number', 'UPC', 'Item QTY', 'Order Number', 'Delivery Address'])
+            print(f'Wrote CSV file headers')
+            
             for email_id in email_id_list:
                 result, email_data = imap_server.fetch(email_id, '(RFC822)')
                 if result == 'OK':
                     email_message = email.message_from_bytes(email_data[0][1])
                     email_subject = email_message.get("Subject", "")
-                    print (f'Processing email with subject: {email_subject}')
+                    # print (f'Processing email with subject: {email_subject}')
                     
-                    process_and_write_to_csv_or_txt(csv_writer, email_message, email_subject, email_id)
+                    process_and_write_to_csv_or_txt(output_csv_writer, submission_csv_writer, email_message, email_subject, email_id)
         #if unshipped_order_email_ids:
             # handle unshipped orders here
                     
@@ -215,6 +220,5 @@ if __name__ == "__main__":
     config_filename = "config.txt"
     email_address, app_password = read_config(config_filename)
     sender_emails_to_search = ["orders@oe.target.com", "orders@oe1.target.com"]
-    output_csv = "target_tracking.csv"
     UPC_list_file_path = "UPClist.txt"
-    search_emails_from_specific_senders(email_address, app_password, sender_emails_to_search, output_csv)
+    search_emails_from_specific_senders(email_address, app_password, sender_emails_to_search)
