@@ -16,14 +16,14 @@ def read_config(filename):
             config[key] = value
     return config.get('email_address'), config.get('app_password')
 
-def write_to_processed_list(email_id):
-    with open('processed_emails.txt', 'a') as file:
-        file.write(f'{email_id}\n')
+def write_to_processed_list(tracking_number):
+    with open('processed_tracking_numbers.txt', 'a') as file:
+        file.write(f'{tracking_number}\n')
 
-def check_if_email_processed(email_id):
-    with open('processed_emails.txt', 'r') as file:
+def check_if_email_processed(tracking_number):
+    with open('processed_tracking_numbers.txt', 'r') as file:
         for line in file:
-            if line.strip() == email_id:
+            if line.strip() == tracking_number:
                 return True
     return False
 
@@ -130,58 +130,49 @@ def itemnametoupc(item_name, UPC_list_file_path):
     
 def process_and_write_to_csv(output_csv_writer, submission_csv_writer, email_message, email_subject, email_id):
     order_number = None
-    order_date = None
     delivery_address = None
     tracking_number = None
     item_name = None
     item_quantity = None
-    unshipped_order_email_ids = []
-
-    if not check_if_email_processed(email_id):
-        if "Get ready for something special!" in email_subject:
-            for part in email_message.walk():
-                if part.get_content_type() == "text/html":
-                    email_content = part.get_payload(decode=True).decode("utf-8", errors="ignore")
-                    order_number = get_order_number(email_content)
-                    txt_file = open(f'email_log/{order_number}_email_content.txt', 'w', encoding='utf-8')
-                    txt_file.write(email_content)
-                    txt_file.close()  # Close the file after writing
-
-                    try:
+    
+    if "Get ready for something special!" in email_subject:
+        for part in email_message.walk():
+            if part.get_content_type() == "text/html":
+                email_content = part.get_payload(decode=True).decode("utf-8", errors="ignore")
+                
+                try:
+                    tracking_number, carrier = get_tracking_number(email_content)
+                    if not check_if_email_processed(tracking_number):
                         order_number = get_order_number(email_content)
-                        # order_date = get_order_date(email_content)  # Uncomment if needed
+                        with open(f'email_log/{order_number}_email_content.txt', 'w', encoding='utf-8') as txt_file:
+                            txt_file.write(email_content)
+                        
+                        order_number = get_order_number(email_content)
                         delivery_address = get_delivery_address(email_content)
-                        tracking_number, carrier = get_tracking_number(email_content)
                         
                         item_names = get_item_names(email_content)
                         item_quantities = get_item_quantities(email_content)
                         
                         for item_name, item_quantity in zip(item_names, item_quantities):
                             item_upc = itemnametoupc(item_name, UPC_list_file_path)
-                        
+                            
                             if tracking_number is not None:
                                 output_csv_writer.writerow([tracking_number, item_upc, item_quantity, order_number, delivery_address])
                                 submission_csv_writer.writerow([tracking_number, item_upc, item_quantity])
                                 print(f'Order number {order_number} shipped with {carrier}, shipping details logged to CSV')
-                                write_to_processed_list(email_id)
-                                print(f'Email ID {email_id} added to processed list')
+                                write_to_processed_list(tracking_number)
+                                print(f'Tracking number {tracking_number} added to processed list')
                             else:
                                 print(f'No tracking number found for order: {order_number}')
                                 output_csv_writer.writerow(['unshipped', item_upc, item_quantity, order_number, delivery_address])
-
-                    except Exception as e:
-                        print(f'Failed to process email: {str(e)}')
-                        with open(f'email_content.txt', 'w', encoding='utf-8') as txt_file:
-                            txt_file.write(email_content)  # Write the entire email content as a string
-        else:
-            print('Not a shipping email - labeling as processed and skipping')
-            write_to_processed_list(email_id)
-            #unshipped_order_email_ids.append(email_id)  # Add the email ID to the unshipped list
-            return
+                    else:
+                        print('Email already processed - skipping')
+                except Exception as e:
+                    print(f'Failed to process email: {str(e)}')
+                    with open(f'email_content.txt', 'w', encoding='utf-8') as txt_file:
+                        txt_file.write(email_content)
     else:
-        print('Email already processed - skipping')
-        return
-    #return unshipped_order_email_ids
+        print('Not a shipping email - skipping')
 
 def search_emails_from_specific_senders(email_address, app_password, senders):
     try:
