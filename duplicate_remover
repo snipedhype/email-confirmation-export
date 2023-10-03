@@ -1,0 +1,34 @@
+import csv
+
+def read_csv(filename):
+    with open(filename, 'r') as file:
+        reader = csv.reader(file)
+        return list(reader)
+
+def write_csv(filename, rows):
+    with open(filename, 'w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerows(rows)
+
+def compare_csv(original_filename, comparison_filename, output_filename):
+    original_rows = read_csv(original_filename)
+    comparison_rows = read_csv(comparison_filename)
+
+    # Extract tracking numbers from both files without skipping any headers
+    original_trackings = {row[0] for row in original_rows}
+    comparison_trackings = {row[0] for row in comparison_rows}
+
+    # Determine which tracking numbers in the original are missing from the comparison
+    missing_trackings = original_trackings - comparison_trackings
+
+    # Filter original rows for those with missing tracking numbers
+    output_rows = [row for row in original_rows if row[0] in missing_trackings]
+
+    # Write to output file
+    write_csv(output_filename, output_rows)
+
+if __name__ == "__main__":
+    original_file = r'C:\Users\zffel\OneDrive\Documents\GitHub\email-confirmation-export\tracking_csvs\target_tracking_2023-10-02_23-43-30_submission.csv'
+    comparison_file = r'C:\Users\zffel\Downloads\snipedhype0 (3).csv'
+    output_file = 'output.csv'
+    compare_csv(original_file, comparison_file, output_file)
